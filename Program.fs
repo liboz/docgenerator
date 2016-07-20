@@ -22,9 +22,10 @@ let listBaseFile docFolder functionName =
     |> Array.filter (fun i -> i.Contains(functionName))
     |> Array.map (fun i -> i.Replace(docFolder, ""))
 
+let pathSeparationCharacters = [|'/'; '\\'|]
+
 let cleanStart (fileName: string) = 
-    let startChars = [|'/'; '\\'|]
-    fileName.TrimStart(startChars)
+    fileName.TrimStart(pathSeparationCharacters)
 
 let convertFileEnumerationToQuestion (files: string []) =
     match files with 
@@ -142,7 +143,18 @@ let moduleFullName moduleName =
     | "array" -> "array"
     | _ -> failwith "Not one of the supported modules" 
 
-let modifySnippet (lines: string []) baseModuleName newModuleName docFolder =
+let generateNewSnippetNumber fileNameBase docFolder =
+    let rec generate fileNameBase docFolder numList =
+        match numList with
+        | [] -> failwith "No valid new snippet filename"
+        | h::t -> let newFileName = fileNameBase + h.ToString() + ".fs"
+                  if File.Exists(docFolder + "\\" + newFileName) then
+                      generate fileNameBase docFolder t
+                  else
+                      newFileName
+    generate fileNameBase docFolder [1..10000]
+
+let modifySnippet (lines: string []) newModuleName baseModuleName docFolder =
     let start = "[!code-fsharp[Main]("
     let lineIndex = 
         lines
@@ -155,11 +167,16 @@ let modifySnippet (lines: string []) baseModuleName newModuleName docFolder =
                     try
                         File.Copy(docFolder + "\\" + path, docFolder + "\\" + newPath)
                     with
-                        | :? IOException -> 
-                            newPath <- 
+                        | :? IOException ->
+                            let fileName = newPath.Split('.').[0]
+                            let finalIndex = fileName.LastIndexOf("t") + 1 //snippet ends with t!
+                            let snippetName = fileName.Remove(finalIndex)
+                            let newFileName = generateNewSnippetNumber snippetName docFolder
+                            newPath <- newFileName
                             File.Copy(docFolder + "\\" + path, docFolder + "\\" + newPath)
-                    let newLine = line
-                    lines.[index] <- newLine
+                    let newLine = newPath
+                    lines.[index] <- start + newLine + ")]"
+
 
 let modifyNewFile newFile baseModuleName newModuleName docFolder author =
     let lines = File.ReadAllLines(newFile)
