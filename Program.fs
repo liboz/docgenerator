@@ -143,6 +143,9 @@ let moduleFullName moduleName =
     | "array" -> "array"
     | _ -> failwith "Not one of the supported modules" 
 
+let modifyFullName (i: string) baseModuleName newModuleName =
+    modifyLine i moduleFullName baseModuleName newModuleName
+
 let generateNewSnippetNumber fileNameBase docFolder =
     let rec generate fileNameBase docFolder numList =
         match numList with
@@ -154,7 +157,7 @@ let generateNewSnippetNumber fileNameBase docFolder =
                       newFileName
     generate fileNameBase docFolder [1..10000]
 
-let modifySnippet (lines: string []) newModuleName baseModuleName docFolder =
+let modifySnippet (lines: string []) docFolder newModuleName baseModuleName =
     let start = "[!code-fsharp[Main]("
     let lineIndex = 
         lines
@@ -177,8 +180,26 @@ let modifySnippet (lines: string []) newModuleName baseModuleName docFolder =
                     let newLine = newPath
                     lines.[index] <- start + newLine + ")]"
 
+let getTOCFileName (filePath: string) =
+    let fileName = filePath.Split(pathSeparationCharacters) |> Array.last
+    let functionName = fileName.Split('-').[0]
+    String.Format("######[{0} Function]({1})", capitalize functionName, fileName)
 
-let modifyNewFile newFile baseModuleName newModuleName docFolder author =
+let modifyTOC newFileName docFolder newModuleName functionName =
+    let tocFileName = docFolder + "\\" + "TOC.md"
+    let toc = File.ReadAllLines(tocFileName)
+    let beforeIndex = 
+        toc
+        |> Array.findIndex (fun i -> i.Contains(capitalize newModuleName + ".") &&
+                                     i.Split('.').[1] > functionName 
+                            )
+    let part1, part2 = toc |> Array.splitAt beforeIndex
+    let tocLine = getTOCFileName newFileName
+    let newtoc = Array.concat [part1; [| tocLine |]; part2;]
+    File.WriteAllLines(tocFileName, newtoc)
+
+
+let modifyNewFile newFile docFolder baseModuleName newModuleName author =
     let lines = File.ReadAllLines(newFile)
     let metaEndIndex = lines |> Array.find (fun i -> i = "---")
     findAndModifySingleLine lines "title" newModuleName (Some(baseModuleName))
@@ -188,7 +209,7 @@ let modifyNewFile newFile baseModuleName newModuleName docFolder author =
     let newGuid = Guid.NewGuid().ToString()
     findAndModifySingleLine lines "ms.assetid" newGuid None
     findAndModifySingleLine lines "**Namespace/Module Path:** Microsoft.FSharp.Collections." newModuleName (Some(baseModuleName))
-    modifySnippet lines newModuleName baseModuleName docFolder
+    modifySnippet lines docFolder newModuleName baseModuleName 
     findAndModifySingleLine lines "Supported in: " "" (Some("2.0, "))
     findAndModifySingleLine lines "[Collections." newModuleName (Some(baseModuleName))
     let newLines = 
@@ -196,16 +217,20 @@ let modifyNewFile newFile baseModuleName newModuleName docFolder author =
         |> Array.map (fun i -> modifyModuleType i baseModuleName newModuleName)
         |> Array.map (fun i -> modifyFunctionCall i baseModuleName newModuleName)
         |> Array.map (fun i -> modifyTypeSignature i baseModuleName newModuleName)
+        |> Array.map (fun i -> modifyFullName i baseModuleName newModuleName)
     File.WriteAllLines(newFile, newLines)
 
 [<EntryPoint>]
 let main argv = 
-    let files = listBaseFile docFolder "distinct"
+    let functionName = "distinct"
+    let files = listBaseFile docFolder functionName
     let printstr = convertFileEnumerationToQuestion files
     printfn "%s" printstr
     let baseFile = readUserFileSelection files
     let moduleName = findBaseModuleName baseFile
-    let newModuleName = "list"
+    let newModuleName = "array"
     let newFile = makeNewFile  docFolder baseFile moduleName newModuleName
-    modifyNewFile newFile moduleName newModuleName docFolder "liboz"
+    modifyNewFile newFile docFolder moduleName newModuleName  "liboz"
+    modifyTOC newFile docFolder newModuleName functionName
+    
     0 // return an integer exit code
