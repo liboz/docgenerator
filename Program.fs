@@ -90,6 +90,9 @@ let capitalize (astring: string) =
     | _ -> charArray.[0] <- charArray.[0].ToString().ToUpper().Chars(0)
            new String(charArray)
 
+let capitalizeChar (achar: char) =
+    achar.ToString().ToUpper().Chars(0)
+
 let findAndModifySingleLine (lines: string []) lineInfo newPropertyValue (stringModify: string option) = 
     let line = lines
                    |> Array.tryFindIndex (fun i -> i.StartsWith(lineInfo))
@@ -180,10 +183,45 @@ let modifySnippet (lines: string []) docFolder newModuleName baseModuleName =
                     let newLine = newPath
                     lines.[index] <- start + newLine + ")]"
 
+let findComma charArray =
+    charArray
+    |> Array.fold ( fun acc i  -> 
+            let indexList, index = acc
+            if i = ',' then
+                (index::indexList, index + 1)
+            else
+                (indexList, index + 1)
+            ) ([], 0)
+    |> fst    
+
 let getTOCFileName (filePath: string) =
     let fileName = filePath.Split(pathSeparationCharacters) |> Array.last
     let functionName = fileName.Split('-').[0]
-    String.Format("######[{0} Function]({1})", capitalize functionName, fileName)
+    let TOCfunctionName =
+        let charArray = (capitalize functionName).ToCharArray()
+        let leftBracketIndex = 
+            charArray
+            |> Array.findIndex ( fun i -> i = '[')
+        let rightBracketIndex = 
+            charArray
+            |> Array.findIndex ( fun i -> i = ']')
+        let commaIndexList = findComma charArray
+        let newCharArray =
+            charArray
+            |> Array.mapi (fun index c ->
+                if index = leftBracketIndex then
+                    '<'
+                elif index = rightBracketIndex then
+                    '>'
+                elif index = leftBracketIndex + 2 then
+                    capitalizeChar charArray.[leftBracketIndex + 2]
+                elif commaIndexList |> List.exists (fun i -> (i = index - 2) && (index - 2 < rightBracketIndex)) then
+                    capitalizeChar charArray.[index]
+                else
+                    c
+                )
+        new String(newCharArray)
+    String.Format("######[{0} Function]({1})", TOCfunctionName, fileName)
 
 let modifyTOC newFileName docFolder newModuleName functionName =
     let tocFileName = docFolder + "\\" + "TOC.md"
@@ -222,13 +260,13 @@ let modifyNewFile newFile docFolder baseModuleName newModuleName author =
 
 [<EntryPoint>]
 let main argv = 
-    let functionName = "distinct"
+    let functionName = "foldback"
     let files = listBaseFile docFolder functionName
     let printstr = convertFileEnumerationToQuestion files
     printfn "%s" printstr
     let baseFile = readUserFileSelection files
     let moduleName = findBaseModuleName baseFile
-    let newModuleName = "array"
+    let newModuleName = "seq"
     let newFile = makeNewFile  docFolder baseFile moduleName newModuleName
     modifyNewFile newFile docFolder moduleName newModuleName  "liboz"
     modifyTOC newFile docFolder newModuleName functionName
